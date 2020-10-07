@@ -30,37 +30,47 @@ public class Main {
 
 	private static int READ_BUF = 1024 * 64;
 
+	// max length of a copy block - should not exceed Integer.MAX_VALUE
+//	final static long MAX_BLOCK_LENGTH = 1024 * 1024 * 1024; // 1GiB
+	final static long MAX_BLOCK_LENGTH = 256 * 1024 * 1024; // 256MiB
+
 	public static void main(String[] args) throws IOException, InterruptedException {
-		final String file = args[0];
-		final String outFile = args[1];
+		final String file = args[0]; // HDFS URI syntax
+		final String outFile = args[1]; // local path
 		final int numThreads = Integer.parseInt(args[2]);
 
 		final Configuration conf = new Configuration();
-		// optionally set configuration here
 		try (final FileSystem fileSystem = FileSystem.get(conf)) {
-			// copyToLocal(fileSystem, file);
-			final List<Block> blockList = buildBlockList(fileSystem, file);
-			try (RandomAccessFile raFile = new RandomAccessFile(outFile, "rw")) {
-				try (final FileChannel localFile = raFile.getChannel()) {
+			// copyToLocal(fileSystem, file, outFile);
+			copyBlockwise(fileSystem, file, outFile, numThreads);
+		}
+	}
 
-					if (numThreads >= 1) {
-						final ExecutorService threadPool = Executors.newFixedThreadPool(numThreads);
-						blockList.stream().map(block -> new Runnable() {
-							@Override
-							public void run() {
-								try {
-									copyToLocal(fileSystem, file, block, localFile);
-								} catch (IOException e) {
-									e.printStackTrace();
-								}
+	private static void copyBlockwise(FileSystem fileSystem, String file, String outFile, int numThreads)
+			throws IOException, InterruptedException {
+		// get list of blocks / "tasks" for copy jobs
+		final List<Block> blockList = buildBlockList(fileSystem, file);
+		try (RandomAccessFile raFile = new RandomAccessFile(outFile, "rw")) {
+			try (final FileChannel localFile = raFile.getChannel()) {
+				if (numThreads >= 1) {
+					final ExecutorService threadPool = Executors.newFixedThreadPool(numThreads);
+					blockList.stream().map(block -> new Runnable() {
+						@Override
+						public void run() {
+							try {
+								copyToLocal(fileSystem, file, block, localFile);
+							} catch (IOException e) {
+								// for now, ignore exceptions here
+								e.printStackTrace();
 							}
-						}).forEach(threadPool::execute);
-						threadPool.shutdown();
-						threadPool.awaitTermination(10, TimeUnit.MINUTES);
-					} else {
-						for (Block block : blockList) {
-							copyToLocal(fileSystem, file, block, localFile);
 						}
+					}).forEach(threadPool::execute);
+					// now shutdown and wait for all tasks to complete
+					threadPool.shutdown();
+					threadPool.awaitTermination(10, TimeUnit.MINUTES); // arbitrary timeout value
+				} else {
+					for (Block block : blockList) {
+						copyToLocal(fileSystem, file, block, localFile);
 					}
 				}
 			}
@@ -68,9 +78,9 @@ public class Main {
 	}
 
 	/*
-	 * copies whole file to local fs
+	 * copies whole file to local fs - not used any more, serves as reference
 	 */
-	private static void copyToLocal(String file, FileSystem fileSystem, String outFile) throws IOException {
+	private static void copyToLocal(FileSystem fileSystem, String file, String outFile) throws IOException {
 		final Path path = new Path(file);
 		if (!fileSystem.exists(path)) {
 			System.out.println("File " + file + " does not exists");
@@ -124,9 +134,6 @@ public class Main {
 		return list;
 	}
 
-//	final static long MAX_BLOCK_LENGTH = 1024 * 1024 * 1024; // 1GiB
-	final static long MAX_BLOCK_LENGTH = 128 * 1024 * 1024; // 128MiB
-
 	// in case a block is longer than MAX_BLOCK_LENGTH, split it into parts not
 	// larger than that
 	private static Stream<Block> splitBlock(Block longBlock) {
@@ -140,10 +147,11 @@ public class Main {
 		}
 	}
 
+	final static ThreadLocal<byte[]> localBuf = ThreadLocal.withInitial(() -> new byte[READ_BUF]);
+
 	private static void copyToLocal(FileSystem fileSystem, String file, Block block, FileChannel localFile)
 			throws IOException {
-		// final ByteBuffer buf = ByteBuffer.allocateDirect(READ_BUF);
-		final byte[] buf = new byte[READ_BUF];
+		final byte[] buf = localBuf.get();
 		try (final FSDataInputStream in = fileSystem.open(new Path(file), READ_BUF)) {
 			in.seek(block.offset);
 			long remaining = block.length;
