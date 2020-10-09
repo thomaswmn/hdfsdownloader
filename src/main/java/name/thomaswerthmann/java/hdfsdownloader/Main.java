@@ -59,6 +59,9 @@ public class Main {
 	private static final String READ_BUFFER_OPTION = OPTION_BASE + ".readbuffer";
 	private static final int READ_BUFFER_DEFAULT = 64 * 1024; // 64 kiB
 
+	private static final String VERIFY_CHECKSUM_OPTION = OPTION_BASE + ".checksum.verify";
+	private static final boolean VERIFY_CHECKSUM_DEFAULT = true;
+
 	// size of the buffer for reading
 	private static int READ_BUF;
 
@@ -75,8 +78,10 @@ public class Main {
 		final int numThreads = conf.getInt(NUM_THREAD_OPTION, NUM_THREAD_DEFAULT);
 		MAX_BLOCK_SIZE = conf.getLong(MAX_BLOCK_SIZE_OPTION, MAX_BLOCK_SIZE_DEFAULT);
 		READ_BUF = conf.getInt(READ_BUFFER_OPTION, READ_BUFFER_DEFAULT);
+		final boolean verifyChecksum = conf.getBoolean(VERIFY_CHECKSUM_OPTION, VERIFY_CHECKSUM_DEFAULT);
 
 		try (final FileSystem fileSystem = FileSystem.get(new URI(file), conf)) {
+			fileSystem.setVerifyChecksum(verifyChecksum);
 			final long timeStart = System.currentTimeMillis();
 			// copyToLocal(fileSystem, file, outFile);
 			copyBlockwise(fileSystem, file, outFile, numThreads);
