@@ -70,20 +70,21 @@ public class Main {
 	static long MAX_BLOCK_SIZE;
 
 	static boolean VERIFY_CHECKSUM;
+	static Configuration CONF;
 
 	public static void main(String[] args) throws IOException, InterruptedException, URISyntaxException {
-		final Configuration conf = new Configuration();
-		String extraArgs[] = new GenericOptionsParser(conf, args).getRemainingArgs();
+		CONF = new Configuration();
+		String extraArgs[] = new GenericOptionsParser(CONF, args).getRemainingArgs();
 
 		final String file = extraArgs[0]; // HDFS URI syntax
 		final String outFile = extraArgs[1]; // local path
 
-		final int numThreads = conf.getInt(NUM_THREAD_OPTION, NUM_THREAD_DEFAULT);
-		MAX_BLOCK_SIZE = conf.getLong(MAX_BLOCK_SIZE_OPTION, MAX_BLOCK_SIZE_DEFAULT);
-		READ_BUF = conf.getInt(READ_BUFFER_OPTION, READ_BUFFER_DEFAULT);
-		VERIFY_CHECKSUM = conf.getBoolean(VERIFY_CHECKSUM_OPTION, VERIFY_CHECKSUM_DEFAULT);
+		final int numThreads = CONF.getInt(NUM_THREAD_OPTION, NUM_THREAD_DEFAULT);
+		MAX_BLOCK_SIZE = CONF.getLong(MAX_BLOCK_SIZE_OPTION, MAX_BLOCK_SIZE_DEFAULT);
+		READ_BUF = CONF.getInt(READ_BUFFER_OPTION, READ_BUFFER_DEFAULT);
+		VERIFY_CHECKSUM = CONF.getBoolean(VERIFY_CHECKSUM_OPTION, VERIFY_CHECKSUM_DEFAULT);
 
-		try (final FileSystem fileSystem = FileSystem.get(new URI(file), conf)) {
+		try (final FileSystem fileSystem = FileSystem.get(new URI(file), CONF)) {
 			fileSystem.setVerifyChecksum(VERIFY_CHECKSUM);
 			final long timeStart = System.currentTimeMillis();
 			// copyToLocal(fileSystem, file, outFile);
