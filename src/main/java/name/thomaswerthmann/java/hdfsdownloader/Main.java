@@ -72,9 +72,24 @@ public class Main {
 		READ_BUF = conf.getInt(READ_BUFFER_OPTION, READ_BUFFER_DEFAULT);
 
 		try (final FileSystem fileSystem = FileSystem.get(conf)) {
+			final long timeStart = System.currentTimeMillis();
 			// copyToLocal(fileSystem, file, outFile);
 			copyBlockwise(fileSystem, file, outFile, numThreads);
+			final long timeEnd = System.currentTimeMillis();
+			printDurationAndThroughput(timeStart, timeEnd, getFileSize(fileSystem, file));
 		}
+	}
+
+	private static void printDurationAndThroughput(long timeStart, long timeEnd, long fileSize) {
+		final double duration = (timeEnd - timeStart) / 1000.0;
+		final double bytesPerSecond = fileSize / duration;
+		final double mebiBytesPerSecond = bytesPerSecond / 1024 / 1024;
+		System.out.println(String.format("transferred %,.1f MiB in %,.1f s --> %,.1f MiB/s", fileSize / 1024.0 / 1024.0,
+				duration, mebiBytesPerSecond));
+	}
+
+	private static long getFileSize(FileSystem fileSystem, String file) throws IllegalArgumentException, IOException {
+		return fileSystem.getFileStatus(new Path(file)).getLen();
 	}
 
 	private static void copyBlockwise(FileSystem fileSystem, String file, String outFile, int numThreads)
