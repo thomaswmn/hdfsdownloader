@@ -223,7 +223,7 @@ public class Main {
 
 	private static void copyToLocal(FileSystem fileSystemUnused, String file, Block block, FileChannel localFile)
 			throws IOException, URISyntaxException {
-		try (final FileSystem fileSystem = FileSystem.get(new URI(file), CONF)) {
+		try (final FileSystem fileSystem = FileSystem.newInstance(new URI(file), CONF)) {
 			fileSystem.setVerifyChecksum(VERIFY_CHECKSUM);
 
 			try (final FSDataInputStream in = fileSystem.open(new Path(file), READ_BUF)) {
