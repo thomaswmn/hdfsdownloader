@@ -107,7 +107,7 @@ public class Main {
 	}
 
 	private static void copyBlockwise(FileSystem fileSystem, String file, String outFile, int numThreads)
-			throws IOException, InterruptedException {
+			throws IOException, InterruptedException, URISyntaxException {
 		// get list of blocks / "tasks" for copy jobs
 		final List<Block> blockList = buildBlockList(fileSystem, file);
 		try (RandomAccessFile raFile = new RandomAccessFile(outFile, "rw")) {
@@ -117,7 +117,7 @@ public class Main {
 
 					final List<Future<Object>> futures = blockList.stream().map(block -> new Callable<Object>() {
 						@Override
-						public Object call() throws IOException {
+						public Object call() throws Exception {
 							copyToLocal(fileSystem, file, block, localFile);
 							return null;
 						}
@@ -221,27 +221,33 @@ public class Main {
 
 	final static ThreadLocal<byte[]> bufferPool = ThreadLocal.withInitial(() -> new byte[READ_BUF]);
 
-	private static void copyToLocal(FileSystem fileSystem, String file, Block block, FileChannel localFile)
-			throws IOException {
-		try (final FSDataInputStream in = fileSystem.open(new Path(file), READ_BUF)) {
-			in.seek(block.offset);
-			final MappedByteBuffer localBuf = localFile.map(MapMode.READ_WRITE, block.offset, block.length);
+	private static void copyToLocal(FileSystem fileSystemUnused, String file, Block block, FileChannel localFile)
+			throws IOException, URISyntaxException {
+		try (final FileSystem fileSystem = FileSystem.get(new URI(file), CONF)) {
+			fileSystem.setVerifyChecksum(VERIFY_CHECKSUM);
 
-			if (in.hasCapability(StreamCapabilities.READBYTEBUFFER))
-				copyBlockByteBuffer(in, localBuf, block.length);
-			else
-				copyBlockBytearray(in, localBuf, block.length);
+			try (final FSDataInputStream in = fileSystem.open(new Path(file), READ_BUF)) {
+				in.seek(block.offset);
+				final MappedByteBuffer localBuf = localFile.map(MapMode.READ_WRITE, block.offset, block.length);
 
-			try { // try to clean the buffer to unmap the memory
-				Method cleaner = localBuf.getClass().getMethod("cleaner");
-				cleaner.setAccessible(true);
-				Method clean = Class.forName("sun.misc.Cleaner").getMethod("clean");
-				clean.setAccessible(true);
-				clean.invoke(cleaner.invoke(localBuf));
-			} catch (Exception e) {
-				// ignore - unmapping is just best effort, here
+				if (in.hasCapability(StreamCapabilities.READBYTEBUFFER))
+					copyBlockByteBuffer(in, localBuf, block.length);
+				else
+					copyBlockBytearray(in, localBuf, block.length);
+
+				try { // try to clean the buffer to unmap the memory
+					Method cleaner = localBuf.getClass().getMethod("cleaner");
+					cleaner.setAccessible(true);
+					Method clean = Class.forName("sun.misc.Cleaner").getMethod("clean");
+					clean.setAccessible(true);
+					clean.invoke(cleaner.invoke(localBuf));
+				} catch (Exception e) {
+					// ignore - unmapping is just best effort, here
+				}
 			}
+
 		}
+
 	}
 
 	/**
