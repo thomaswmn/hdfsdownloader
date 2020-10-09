@@ -28,8 +28,11 @@ import java.nio.channels.FileChannel.MapMode;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -100,20 +103,31 @@ public class Main {
 			try (final FileChannel localFile = raFile.getChannel()) {
 				if (numThreads >= 1) {
 					final ExecutorService threadPool = Executors.newFixedThreadPool(numThreads);
-					blockList.stream().map(block -> new Runnable() {
+
+					final List<Future<Object>> futures = blockList.stream().map(block -> new Callable<Object>() {
 						@Override
-						public void run() {
-							try {
-								copyToLocal(fileSystem, file, block, localFile);
-							} catch (IOException e) {
-								// for now, ignore exceptions here
-								e.printStackTrace();
-							}
+						public Object call() throws IOException {
+							copyToLocal(fileSystem, file, block, localFile);
+							return null;
 						}
-					}).forEach(threadPool::execute);
+					}).map(threadPool::submit).collect(Collectors.toList());
+
 					// now shutdown and wait for all tasks to complete
 					threadPool.shutdown();
 					threadPool.awaitTermination(10, TimeUnit.MINUTES); // arbitrary timeout value
+
+					// check the futures for exceptions
+					for (Future<Object> f : futures) {
+						try {
+							f.get(); // result not relevant
+						} catch (InterruptedException | ExecutionException e) {
+							// delete file to avoid partial content
+							new File(outFile).delete();
+							// how to handle this?
+							e.printStackTrace();
+						}
+					}
+
 				} else {
 					for (Block block : blockList) {
 						copyToLocal(fileSystem, file, block, localFile);
