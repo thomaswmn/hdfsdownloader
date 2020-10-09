@@ -45,6 +45,7 @@ import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.StreamCapabilities;
 import org.apache.hadoop.util.GenericOptionsParser;
 
 public class Main {
@@ -215,24 +216,18 @@ public class Main {
 		}
 	}
 
-	final static ThreadLocal<byte[]> localBuf = ThreadLocal.withInitial(() -> new byte[READ_BUF]);
+	final static ThreadLocal<byte[]> bufferPool = ThreadLocal.withInitial(() -> new byte[READ_BUF]);
 
 	private static void copyToLocal(FileSystem fileSystem, String file, Block block, FileChannel localFile)
 			throws IOException {
-		final byte[] buf = localBuf.get();
 		try (final FSDataInputStream in = fileSystem.open(new Path(file), READ_BUF)) {
 			in.seek(block.offset);
-			long remaining = block.length;
 			final MappedByteBuffer localBuf = localFile.map(MapMode.READ_WRITE, block.offset, block.length);
-			while (remaining > 0) {
-				final int bytes = in.read(buf);
-				assert bytes > 0; // should not be 0 and not EOF
-				final int bytesToWrite = (int) Math.min(bytes, remaining);
-				remaining -= bytesToWrite;
-				assert remaining >= 0;
 
-				localBuf.put(buf, 0, bytesToWrite);
-			}
+			if (in.hasCapability(StreamCapabilities.READBYTEBUFFER))
+				copyBlockByteBuffer(in, localBuf, block.length);
+			else
+				copyBlockBytearray(in, localBuf, block.length);
 
 			try { // try to clean the buffer to unmap the memory
 				Method cleaner = localBuf.getClass().getMethod("cleaner");
@@ -245,4 +240,36 @@ public class Main {
 			}
 		}
 	}
+
+	/**
+	 * 
+	 * @param in       input stream, seeked to correct position to start
+	 * @param localBuf output as memory mapped byte buffer
+	 * @param numBytes number of bytes to copy
+	 * @throws IOException
+	 */
+	private static void copyBlockBytearray(FSDataInputStream in, MappedByteBuffer localBuf, long numBytes)
+			throws IOException {
+		final byte[] buf = bufferPool.get();
+
+		long remaining = numBytes;
+		while (remaining > 0) {
+			final int bytes = in.read(buf);
+			assert bytes > 0; // should not be 0 and not EOF
+			final int bytesToWrite = (int) Math.min(bytes, remaining);
+			remaining -= bytesToWrite;
+			assert remaining >= 0;
+
+			localBuf.put(buf, 0, bytesToWrite);
+		}
+	}
+
+	private static void copyBlockByteBuffer(FSDataInputStream in, MappedByteBuffer localBuf, long numBytes)
+			throws IOException {
+		while (localBuf.hasRemaining()) {
+			final int bytes = in.read(localBuf);
+			assert bytes > 0; // should not be 0 and not EOF
+		}
+	}
+
 }
