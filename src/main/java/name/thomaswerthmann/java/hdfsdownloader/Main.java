@@ -63,6 +63,9 @@ public class Main {
 	private static final String VERIFY_CHECKSUM_OPTION = OPTION_BASE + ".checksum.verify";
 	private static final boolean VERIFY_CHECKSUM_DEFAULT = true;
 
+	private static final String UNMAP_OPTION = OPTION_BASE + ".unmap";
+	private static final boolean UNMAP_DEFAULT = true;
+
 	// size of the buffer for reading
 	private static int READ_BUF;
 
@@ -70,6 +73,7 @@ public class Main {
 	static long MAX_BLOCK_SIZE;
 
 	static boolean VERIFY_CHECKSUM;
+	static boolean DO_UNMAP;
 	static Configuration CONF;
 
 	public static void main(String[] args) throws IOException, InterruptedException, URISyntaxException {
@@ -83,6 +87,7 @@ public class Main {
 		MAX_BLOCK_SIZE = CONF.getLong(MAX_BLOCK_SIZE_OPTION, MAX_BLOCK_SIZE_DEFAULT);
 		READ_BUF = CONF.getInt(READ_BUFFER_OPTION, READ_BUFFER_DEFAULT);
 		VERIFY_CHECKSUM = CONF.getBoolean(VERIFY_CHECKSUM_OPTION, VERIFY_CHECKSUM_DEFAULT);
+		DO_UNMAP = CONF.getBoolean(UNMAP_OPTION, UNMAP_DEFAULT);
 
 		try (final FileSystem fileSystem = FileSystem.get(new URI(file), CONF)) {
 			fileSystem.setVerifyChecksum(VERIFY_CHECKSUM);
@@ -235,14 +240,16 @@ public class Main {
 				else
 					copyBlockBytearray(in, localBuf, block.length);
 
-				try { // try to clean the buffer to unmap the memory
-					Method cleaner = localBuf.getClass().getMethod("cleaner");
-					cleaner.setAccessible(true);
-					Method clean = Class.forName("sun.misc.Cleaner").getMethod("clean");
-					clean.setAccessible(true);
-					clean.invoke(cleaner.invoke(localBuf));
-				} catch (Exception e) {
-					// ignore - unmapping is just best effort, here
+				if (DO_UNMAP) {
+					try { // try to clean the buffer to unmap the memory
+						Method cleaner = localBuf.getClass().getMethod("cleaner");
+						cleaner.setAccessible(true);
+						Method clean = Class.forName("sun.misc.Cleaner").getMethod("clean");
+						clean.setAccessible(true);
+						clean.invoke(cleaner.invoke(localBuf));
+					} catch (Exception e) {
+						// ignore - unmapping is just best effort, here
+					}
 				}
 			}
 
