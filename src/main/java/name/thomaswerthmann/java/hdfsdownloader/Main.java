@@ -95,16 +95,16 @@ public class Main {
 			// copyToLocal(fileSystem, file, outFile);
 			copyBlockwise(fileSystem, file, outFile, numThreads);
 			final long timeEnd = System.currentTimeMillis();
-			printDurationAndThroughput(timeStart, timeEnd, getFileSize(fileSystem, file));
+			printDurationAndThroughput(timeStart, timeEnd, getFileSize(fileSystem, file), numThreads);
 		}
 	}
 
-	private static void printDurationAndThroughput(long timeStart, long timeEnd, long fileSize) {
+	private static void printDurationAndThroughput(long timeStart, long timeEnd, long fileSize, int numThreads) {
 		final double duration = (timeEnd - timeStart) / 1000.0;
 		final double bytesPerSecond = fileSize / duration;
 		final double mebiBytesPerSecond = bytesPerSecond / 1024 / 1024;
-		System.out.println(String.format("transferred %,.1f MiB in %,.1f s --> %,.1f MiB/s", fileSize / 1024.0 / 1024.0,
-				duration, mebiBytesPerSecond));
+		System.out.println(String.format("transferred %,.1f MiB using %d threads in %,.1f s --> %,.1f MiB/s",
+				fileSize / 1024.0 / 1024.0, numThreads, duration, mebiBytesPerSecond));
 	}
 
 	private static long getFileSize(FileSystem fileSystem, String file) throws IllegalArgumentException, IOException {
