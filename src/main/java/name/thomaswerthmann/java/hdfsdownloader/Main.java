@@ -40,21 +40,37 @@ import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.util.GenericOptionsParser;
 
 public class Main {
+	private static final String OPTION_BASE = "hdfsdownloader";
 
-	private static int READ_BUF = 1024 * 64;
+	private static final String NUM_THREAD_OPTION = OPTION_BASE + ".threads";
+	private static final int NUM_THREAD_DEFAULT = 0;
+
+	private static final String MAX_BLOCK_SIZE_OPTION = OPTION_BASE + ".maxblocksize";
+	private static final long MAX_BLOCK_SIZE_DEFAULT = 1024 * 1024 * 1024; // 1 GiB
+
+	private static final String READ_BUFFER_OPTION = OPTION_BASE + ".readbuffer";
+	private static final int READ_BUFFER_DEFAULT = 64 * 1024; // 64 kiB
+
+	// size of the buffer for reading
+	private static int READ_BUF;
 
 	// max length of a copy block - should not exceed Integer.MAX_VALUE
-//	final static long MAX_BLOCK_LENGTH = 1024 * 1024 * 1024; // 1GiB
-	final static long MAX_BLOCK_LENGTH = 256 * 1024 * 1024; // 256MiB
+	static long MAX_BLOCK_SIZE;
 
 	public static void main(String[] args) throws IOException, InterruptedException {
-		final String file = args[0]; // HDFS URI syntax
-		final String outFile = args[1]; // local path
-		final int numThreads = Integer.parseInt(args[2]);
-
 		final Configuration conf = new Configuration();
+		String extraArgs[] = new GenericOptionsParser(conf, args).getRemainingArgs();
+
+		final String file = extraArgs[0]; // HDFS URI syntax
+		final String outFile = extraArgs[1]; // local path
+
+		final int numThreads = conf.getInt(NUM_THREAD_OPTION, NUM_THREAD_DEFAULT);
+		MAX_BLOCK_SIZE = conf.getLong(MAX_BLOCK_SIZE_OPTION, MAX_BLOCK_SIZE_DEFAULT);
+		READ_BUF = conf.getInt(READ_BUFFER_OPTION, READ_BUFFER_DEFAULT);
+
 		try (final FileSystem fileSystem = FileSystem.get(conf)) {
 			// copyToLocal(fileSystem, file, outFile);
 			copyBlockwise(fileSystem, file, outFile, numThreads);
@@ -137,7 +153,7 @@ public class Main {
 		if (totalLength != stat.getLen())
 			throw new RuntimeException();
 		final long maxLength = list.stream().mapToLong(b -> b.length).max().getAsLong();
-		if (maxLength > MAX_BLOCK_LENGTH)
+		if (maxLength > MAX_BLOCK_SIZE)
 			throw new RuntimeException();
 		// check no overlap
 		final boolean overlap = list.stream().anyMatch(first -> list.stream().anyMatch(second -> (first != second
@@ -152,9 +168,9 @@ public class Main {
 	// in case a block is longer than MAX_BLOCK_LENGTH, split it into parts not
 	// larger than that
 	private static Stream<Block> splitBlock(Block longBlock) {
-		if (longBlock.length > MAX_BLOCK_LENGTH) {
-			final Block first = new Block(longBlock.offset, MAX_BLOCK_LENGTH);
-			final Block remainder = new Block(longBlock.offset + MAX_BLOCK_LENGTH, longBlock.length - MAX_BLOCK_LENGTH);
+		if (longBlock.length > MAX_BLOCK_SIZE) {
+			final Block first = new Block(longBlock.offset, MAX_BLOCK_SIZE);
+			final Block remainder = new Block(longBlock.offset + MAX_BLOCK_SIZE, longBlock.length - MAX_BLOCK_SIZE);
 			return Stream.concat(Collections.singleton(first).stream(), splitBlock(remainder));
 
 		} else {
