@@ -57,7 +57,7 @@ public class Main {
 	private static final long MAX_BLOCK_SIZE_DEFAULT = 1024 * 1024 * 1024; // 1 GiB
 
 	private static final String READ_BUFFER_OPTION = OPTION_BASE + ".readbuffer";
-	private static final int READ_BUFFER_DEFAULT = 64 * 1024; // 64 kiB
+	private static final int READ_BUFFER_DEFAULT = 4 * 1024; // 4 kiB
 
 	private static final String VERIFY_CHECKSUM_OPTION = OPTION_BASE + ".checksum.verify";
 	private static final boolean VERIFY_CHECKSUM_DEFAULT = true;
