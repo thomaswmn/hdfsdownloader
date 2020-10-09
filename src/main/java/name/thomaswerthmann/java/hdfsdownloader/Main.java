@@ -69,6 +69,8 @@ public class Main {
 	// max length of a copy block - should not exceed Integer.MAX_VALUE
 	static long MAX_BLOCK_SIZE;
 
+	static boolean VERIFY_CHECKSUM;
+
 	public static void main(String[] args) throws IOException, InterruptedException, URISyntaxException {
 		final Configuration conf = new Configuration();
 		String extraArgs[] = new GenericOptionsParser(conf, args).getRemainingArgs();
@@ -79,10 +81,10 @@ public class Main {
 		final int numThreads = conf.getInt(NUM_THREAD_OPTION, NUM_THREAD_DEFAULT);
 		MAX_BLOCK_SIZE = conf.getLong(MAX_BLOCK_SIZE_OPTION, MAX_BLOCK_SIZE_DEFAULT);
 		READ_BUF = conf.getInt(READ_BUFFER_OPTION, READ_BUFFER_DEFAULT);
-		final boolean verifyChecksum = conf.getBoolean(VERIFY_CHECKSUM_OPTION, VERIFY_CHECKSUM_DEFAULT);
+		VERIFY_CHECKSUM = conf.getBoolean(VERIFY_CHECKSUM_OPTION, VERIFY_CHECKSUM_DEFAULT);
 
 		try (final FileSystem fileSystem = FileSystem.get(new URI(file), conf)) {
-			fileSystem.setVerifyChecksum(verifyChecksum);
+			fileSystem.setVerifyChecksum(VERIFY_CHECKSUM);
 			final long timeStart = System.currentTimeMillis();
 			// copyToLocal(fileSystem, file, outFile);
 			copyBlockwise(fileSystem, file, outFile, numThreads);
