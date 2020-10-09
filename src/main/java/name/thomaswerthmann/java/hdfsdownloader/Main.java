@@ -126,6 +126,7 @@ public class Main {
 	/*
 	 * copies whole file to local fs - not used any more, serves as reference
 	 */
+	@SuppressWarnings("unused")
 	private static void copyToLocal(FileSystem fileSystem, String file, String outFile) throws IOException {
 		final Path path = new Path(file);
 		if (!fileSystem.exists(path)) {
