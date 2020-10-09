@@ -22,6 +22,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.lang.reflect.Method;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileChannel.MapMode;
@@ -63,7 +65,7 @@ public class Main {
 	// max length of a copy block - should not exceed Integer.MAX_VALUE
 	static long MAX_BLOCK_SIZE;
 
-	public static void main(String[] args) throws IOException, InterruptedException {
+	public static void main(String[] args) throws IOException, InterruptedException, URISyntaxException {
 		final Configuration conf = new Configuration();
 		String extraArgs[] = new GenericOptionsParser(conf, args).getRemainingArgs();
 
@@ -74,7 +76,7 @@ public class Main {
 		MAX_BLOCK_SIZE = conf.getLong(MAX_BLOCK_SIZE_OPTION, MAX_BLOCK_SIZE_DEFAULT);
 		READ_BUF = conf.getInt(READ_BUFFER_OPTION, READ_BUFFER_DEFAULT);
 
-		try (final FileSystem fileSystem = FileSystem.get(conf)) {
+		try (final FileSystem fileSystem = FileSystem.get(new URI(file), conf)) {
 			final long timeStart = System.currentTimeMillis();
 			// copyToLocal(fileSystem, file, outFile);
 			copyBlockwise(fileSystem, file, outFile, numThreads);
