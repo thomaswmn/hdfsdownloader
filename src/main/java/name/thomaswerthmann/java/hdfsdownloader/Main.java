@@ -188,36 +188,52 @@ public class Main {
 		}
 	}
 
+	/** create a list of blocks to copy from the file specified as parameter */
 	private static List<Block> buildBlockList(FileSystem fileSystem, String file) throws IOException {
 		final Path path = new Path(file);
 		final FileStatus stat = fileSystem.getFileStatus(path); // might throw FileNotFoundException
 		final BlockLocation[] blocks = fileSystem.getFileBlockLocations(stat, 0, stat.getLen());
-		final List<Block> list = Arrays.stream(blocks).map(bl -> new Block(bl.getOffset(), bl.getLength()))
-				.flatMap(Main::splitBlock).collect(Collectors.toList());
+		final List<Block> list = splitBlocks(
+				Arrays.stream(blocks).map(bl -> new Block(bl.getOffset(), bl.getLength())).collect(Collectors.toList()),
+				MAX_BLOCK_SIZE, stat.getLen());
+		// shuffle the list to avoid artificially split blocks to be read simultaneously
+		Collections.shuffle(list);
+		return list;
+	}
+
+	/**
+	 * split a list of blocks into potentially smaller blocks, such that no block is
+	 * larger than the specified size
+	 * 
+	 * @param blocks
+	 * @param maxSize
+	 * @param totalLengthForChecks set to negative value to skip this check
+	 * @return
+	 */
+	private static List<Block> splitBlocks(List<Block> blocks, long maxSize, long totalLengthForChecks) {
+		final List<Block> list = blocks.stream().flatMap(b -> splitBlock(b, maxSize)).collect(Collectors.toList());
 		// now check the list
 		final long totalLength = list.stream().mapToLong(b -> b.length).sum();
-		if (totalLength != stat.getLen())
+		if (totalLengthForChecks > 0 && totalLength != totalLengthForChecks)
 			throw new RuntimeException();
 		final long maxLength = list.stream().mapToLong(b -> b.length).max().getAsLong();
-		if (maxLength > MAX_BLOCK_SIZE)
+		if (maxLength > maxSize)
 			throw new RuntimeException();
 		// check no overlap
 		final boolean overlap = list.stream().anyMatch(first -> list.stream().anyMatch(second -> (first != second
 				&& first.offset <= second.offset && first.offset + first.length > second.offset)));
 		if (overlap)
 			throw new RuntimeException();
-		// shuffle the list to avoid artificially split blocks to be read simultaneously
-		Collections.shuffle(list);
 		return list;
 	}
 
 	// in case a block is longer than MAX_BLOCK_LENGTH, split it into parts not
 	// larger than that
-	private static Stream<Block> splitBlock(Block longBlock) {
-		if (longBlock.length > MAX_BLOCK_SIZE) {
-			final Block first = new Block(longBlock.offset, MAX_BLOCK_SIZE);
-			final Block remainder = new Block(longBlock.offset + MAX_BLOCK_SIZE, longBlock.length - MAX_BLOCK_SIZE);
-			return Stream.concat(Collections.singleton(first).stream(), splitBlock(remainder));
+	private static Stream<Block> splitBlock(Block longBlock, long maxSize) {
+		if (longBlock.length > maxSize) {
+			final Block first = new Block(longBlock.offset, maxSize);
+			final Block remainder = new Block(longBlock.offset + maxSize, longBlock.length - maxSize);
+			return Stream.concat(Collections.singleton(first).stream(), splitBlock(remainder, maxSize));
 
 		} else {
 			return Collections.singleton(longBlock).stream();
