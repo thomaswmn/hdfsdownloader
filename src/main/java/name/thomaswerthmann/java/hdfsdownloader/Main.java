@@ -241,6 +241,7 @@ public class Main {
 	}
 
 	final static ThreadLocal<byte[]> bufferPool = ThreadLocal.withInitial(() -> new byte[READ_BUF]);
+	final static long MAX_MMAP_SIZE = 1024 * 1024 * 1024; // 1 GiB, only applied in case buffer > Integer.MAX_SIZE
 
 	private static void copyToLocal(FileSystem fileSystemUnused, String file, Block block, FileChannel localFile)
 			throws IOException, URISyntaxException {
@@ -249,28 +250,35 @@ public class Main {
 
 			try (final FSDataInputStream in = fileSystem.open(new Path(file), READ_BUF)) {
 				in.seek(block.offset);
-				final MappedByteBuffer localBuf = localFile.map(MapMode.READ_WRITE, block.offset, block.length);
 
-				if (in.hasCapability(StreamCapabilities.READBYTEBUFFER))
-					copyBlockByteBuffer(in, localBuf, block.length);
-				else
-					copyBlockBytearray(in, localBuf, block.length);
+				final List<Block> origBlockList = Collections.singletonList(block);
+				final List<Block> blockList = block.length > Integer.MAX_VALUE
+						? splitBlocks(origBlockList, MAX_MMAP_SIZE, block.length)
+						: origBlockList;
 
-				if (DO_UNMAP) {
-					try { // try to clean the buffer to unmap the memory
-						Method cleaner = localBuf.getClass().getMethod("cleaner");
-						cleaner.setAccessible(true);
-						Method clean = Class.forName("sun.misc.Cleaner").getMethod("clean");
-						clean.setAccessible(true);
-						clean.invoke(cleaner.invoke(localBuf));
-					} catch (Exception e) {
-						// ignore - unmapping is just best effort, here
+				for (Block mmBlock : blockList) {
+					final MappedByteBuffer localBuf = localFile.map(MapMode.READ_WRITE, mmBlock.offset, mmBlock.length);
+
+					if (in.hasCapability(StreamCapabilities.READBYTEBUFFER))
+						copyBlockByteBuffer(in, localBuf, mmBlock.length);
+					else
+						copyBlockBytearray(in, localBuf, mmBlock.length);
+
+					if (DO_UNMAP) {
+						try { // try to clean the buffer to unmap the memory
+							Method cleaner = localBuf.getClass().getMethod("cleaner");
+							cleaner.setAccessible(true);
+							Method clean = Class.forName("sun.misc.Cleaner").getMethod("clean");
+							clean.setAccessible(true);
+							clean.invoke(cleaner.invoke(localBuf));
+						} catch (Exception e) {
+							// ignore - unmapping is just best effort, here
+						}
 					}
 				}
 			}
 
 		}
-
 	}
 
 	/**
