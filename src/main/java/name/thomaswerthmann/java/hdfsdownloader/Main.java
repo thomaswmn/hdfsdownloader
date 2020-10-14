@@ -264,20 +264,23 @@ public class Main {
 					else
 						copyBlockBytearray(in, localBuf, mmBlock.length);
 
-					if (DO_UNMAP) {
-						try { // try to clean the buffer to unmap the memory
-							Method cleaner = localBuf.getClass().getMethod("cleaner");
-							cleaner.setAccessible(true);
-							Method clean = Class.forName("sun.misc.Cleaner").getMethod("clean");
-							clean.setAccessible(true);
-							clean.invoke(cleaner.invoke(localBuf));
-						} catch (Exception e) {
-							// ignore - unmapping is just best effort, here
-						}
-					}
+					if (DO_UNMAP)
+						doUnmap(localBuf);
 				}
 			}
 
+		}
+	}
+
+	private static void doUnmap(MappedByteBuffer localBuf) {
+		try { // try to clean the buffer to unmap the memory
+			Method cleaner = localBuf.getClass().getMethod("cleaner");
+			cleaner.setAccessible(true);
+			Method clean = Class.forName("sun.misc.Cleaner").getMethod("clean");
+			clean.setAccessible(true);
+			clean.invoke(cleaner.invoke(localBuf));
+		} catch (Exception e) {
+			// ignore - unmapping is just best effort, here
 		}
 	}
 
