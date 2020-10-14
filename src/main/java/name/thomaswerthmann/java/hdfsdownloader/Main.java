@@ -64,7 +64,7 @@ public class Main {
 	private static final boolean VERIFY_CHECKSUM_DEFAULT = true;
 
 	private static final String UNMAP_OPTION = OPTION_BASE + ".unmap";
-	private static final boolean UNMAP_DEFAULT = true;
+	private static final boolean UNMAP_DEFAULT = false;
 
 	final static long MAX_MMAP_SIZE = 1024 * 1024 * 1024; // 1 GiB, only applied in case buffer > Integer.MAX_SIZE
 
