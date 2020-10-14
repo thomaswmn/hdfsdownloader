@@ -236,7 +236,6 @@ public class Main {
 			final Block first = new Block(longBlock.offset, maxSize);
 			final Block remainder = new Block(longBlock.offset + maxSize, longBlock.length - maxSize);
 			return Stream.concat(Collections.singleton(first).stream(), splitBlock(remainder, maxSize));
-
 		} else {
 			return Collections.singleton(longBlock).stream();
 		}
