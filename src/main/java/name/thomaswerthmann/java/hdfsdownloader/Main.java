@@ -254,11 +254,12 @@ public class Main {
 				final List<Block> blockList = block.length > Integer.MAX_VALUE
 						? splitBlocks(origBlockList, MAX_MMAP_SIZE, block.length)
 						: origBlockList;
+				final boolean useByteBufferCopy = in.hasCapability(StreamCapabilities.READBYTEBUFFER);
 
 				for (Block mmBlock : blockList) {
 					final MappedByteBuffer localBuf = localFile.map(MapMode.READ_WRITE, mmBlock.offset, mmBlock.length);
 
-					if (in.hasCapability(StreamCapabilities.READBYTEBUFFER))
+					if (useByteBufferCopy)
 						copyBlockByteBuffer(in, localBuf, mmBlock.length);
 					else
 						copyBlockBytearray(in, localBuf, mmBlock.length);
