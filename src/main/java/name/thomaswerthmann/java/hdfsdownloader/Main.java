@@ -66,6 +66,8 @@ public class Main {
 	private static final String UNMAP_OPTION = OPTION_BASE + ".unmap";
 	private static final boolean UNMAP_DEFAULT = true;
 
+	final static long MAX_MMAP_SIZE = 1024 * 1024 * 1024; // 1 GiB, only applied in case buffer > Integer.MAX_SIZE
+
 	// size of the buffer for reading
 	private static int READ_BUF;
 
@@ -240,9 +242,6 @@ public class Main {
 		}
 	}
 
-	final static ThreadLocal<byte[]> bufferPool = ThreadLocal.withInitial(() -> new byte[READ_BUF]);
-	final static long MAX_MMAP_SIZE = 1024 * 1024 * 1024; // 1 GiB, only applied in case buffer > Integer.MAX_SIZE
-
 	private static void copyToLocal(FileSystem fileSystemUnused, String file, Block block, FileChannel localFile)
 			throws IOException, URISyntaxException {
 		try (final FileSystem fileSystem = FileSystem.newInstance(new URI(file), CONF)) {
@@ -283,6 +282,8 @@ public class Main {
 			// ignore - unmapping is just best effort, here
 		}
 	}
+
+	final static ThreadLocal<byte[]> bufferPool = ThreadLocal.withInitial(() -> new byte[READ_BUF]);
 
 	/**
 	 * 
