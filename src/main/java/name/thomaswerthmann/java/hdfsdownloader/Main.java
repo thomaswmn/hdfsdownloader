@@ -55,7 +55,7 @@ public class Main {
 	private static final int NUM_THREAD_DEFAULT = 0;
 
 	private static final String MAX_BLOCK_SIZE_OPTION = OPTION_BASE + ".maxblocksize";
-	private static final long MAX_BLOCK_SIZE_DEFAULT = 1024 * 1024 * 1024; // 1 GiB
+	private static final long MAX_BLOCK_SIZE_DEFAULT = Long.MAX_VALUE; // unlimited, see MAX_MMAP_SIZE
 
 	private static final String READ_BUFFER_OPTION = OPTION_BASE + ".readbuffer";
 	private static final int READ_BUFFER_DEFAULT = 4 * 1024; // 4 kiB
