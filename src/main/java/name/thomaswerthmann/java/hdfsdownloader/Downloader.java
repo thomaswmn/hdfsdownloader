@@ -22,7 +22,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.BlockLocation;
@@ -150,69 +149,17 @@ public class Downloader {
 		}
 	}
 
-	/**
-	 * internal class to store information related to a copy-block - not necessarily
-	 * a HDFS block
-	 */
-	private static class Block {
-		final long offset;
-		final long length;
-
-		public Block(long offset, long length) {
-			this.offset = offset;
-			this.length = length;
-		}
-	}
-
 	/** create a list of blocks to copy from the file specified as parameter */
 	private List<Block> buildBlockList(FileSystem fileSystem, String file) throws IOException {
 		final Path path = new Path(file);
 		final FileStatus stat = fileSystem.getFileStatus(path); // might throw FileNotFoundException
 		final BlockLocation[] blocks = fileSystem.getFileBlockLocations(stat, 0, stat.getLen());
-		final List<Block> list = splitBlocks(
+		final List<Block> list = BlockUtils.splitBlocks(
 				Arrays.stream(blocks).map(bl -> new Block(bl.getOffset(), bl.getLength())).collect(Collectors.toList()),
 				maxBlockSize, stat.getLen());
 		// shuffle the list to avoid artificially split blocks to be read simultaneously
 		Collections.shuffle(list);
 		return list;
-	}
-
-	/**
-	 * split a list of blocks into potentially smaller blocks, such that no block is
-	 * larger than the specified size
-	 * 
-	 * @param blocks
-	 * @param maxSize
-	 * @param totalLengthForChecks set to negative value to skip this check
-	 * @return
-	 */
-	private static List<Block> splitBlocks(List<Block> blocks, long maxSize, long totalLengthForChecks) {
-		final List<Block> list = blocks.stream().flatMap(b -> splitBlock(b, maxSize)).collect(Collectors.toList());
-		// now check the list
-		final long totalLength = list.stream().mapToLong(b -> b.length).sum();
-		if (totalLengthForChecks > 0 && totalLength != totalLengthForChecks)
-			throw new RuntimeException();
-		final long maxLength = list.stream().mapToLong(b -> b.length).max().getAsLong();
-		if (maxLength > maxSize)
-			throw new RuntimeException();
-		// check no overlap
-		final boolean overlap = list.stream().anyMatch(first -> list.stream().anyMatch(second -> (first != second
-				&& first.offset <= second.offset && first.offset + first.length > second.offset)));
-		if (overlap)
-			throw new RuntimeException();
-		return list;
-	}
-
-	// in case a block is longer than MAX_BLOCK_LENGTH, split it into parts not
-	// larger than that
-	private static Stream<Block> splitBlock(Block longBlock, long maxSize) {
-		if (longBlock.length > maxSize) {
-			final Block first = new Block(longBlock.offset, maxSize);
-			final Block remainder = new Block(longBlock.offset + maxSize, longBlock.length - maxSize);
-			return Stream.concat(Collections.singleton(first).stream(), splitBlock(remainder, maxSize));
-		} else {
-			return Collections.singleton(longBlock).stream();
-		}
 	}
 
 	/**
@@ -245,7 +192,7 @@ public class Downloader {
 
 			final List<Block> origBlockList = Collections.singletonList(block);
 			final List<Block> blockList = block.length > Integer.MAX_VALUE
-					? splitBlocks(origBlockList, MAX_MMAP_SIZE, block.length)
+					? BlockUtils.splitBlocks(origBlockList, MAX_MMAP_SIZE, block.length)
 					: origBlockList;
 			final boolean useByteBufferCopy = in.hasCapability(StreamCapabilities.READBYTEBUFFER);
 
