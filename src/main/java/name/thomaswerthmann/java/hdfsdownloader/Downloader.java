@@ -71,6 +71,9 @@ public class Downloader {
 	private static final String NEW_FILESYSTEM_INSTANCE_OPTION = OPTION_BASE + ".filesystem.new";
 	private static final boolean NEW_FILESYSTEM_INSTANCE_DEFAULT = false;
 
+	private static final String FALLOCATE_OPTION = OPTION_BASE + ".fallocate.mode";
+	private static final int FALLOCATE_DEFAULT = -1; // do not call fallocate by default
+
 	final static long MAX_MMAP_SIZE = 1024 * 1024 * 1024; // 1 GiB, only applied in case buffer > Integer.MAX_SIZE
 
 	private final ThreadLocal<byte[]> bufferPool;
@@ -82,6 +85,7 @@ public class Downloader {
 	final boolean verifyChecksum;
 	final boolean recreateFileSytemInstances;
 	final int numThreads;
+	final int fallocateMode;
 	final Configuration conf;
 
 	public Downloader(Configuration conf) {
@@ -92,6 +96,7 @@ public class Downloader {
 		verifyChecksum = conf.getBoolean(VERIFY_CHECKSUM_OPTION, VERIFY_CHECKSUM_DEFAULT);
 		doUnmap = conf.getBoolean(UNMAP_OPTION, UNMAP_DEFAULT);
 		recreateFileSytemInstances = conf.getBoolean(NEW_FILESYSTEM_INSTANCE_OPTION, NEW_FILESYSTEM_INSTANCE_DEFAULT);
+		fallocateMode = conf.getInt(FALLOCATE_OPTION, FALLOCATE_DEFAULT);
 	}
 
 	public int getNumThreads() {
@@ -107,6 +112,11 @@ public class Downloader {
 			final List<Block> blockList = buildBlockList(fileSystem, file);
 			try (RandomAccessFile raFile = new RandomAccessFile(outFile, "rw")) {
 				try (final FileChannel localFile = raFile.getChannel()) {
+					// optionally call fallocate()
+					if (fallocateMode >= 0)
+						FallocateHelper.fallocate(localFile, 0, fileSystem.getFileStatus(new Path(file)).getLen(),
+								fallocateMode);
+
 					if (numThreads >= 1) {
 						final ExecutorService threadPool = Executors.newFixedThreadPool(numThreads);
 
