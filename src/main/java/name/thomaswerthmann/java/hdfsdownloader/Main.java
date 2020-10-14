@@ -57,6 +57,10 @@ public class Main {
 	private static final String MAX_BLOCK_SIZE_OPTION = OPTION_BASE + ".maxblocksize";
 	private static final long MAX_BLOCK_SIZE_DEFAULT = Long.MAX_VALUE; // unlimited, see MAX_MMAP_SIZE
 
+	/**
+	 * this buffer here is used for copying, io.file.buffer.size determines the
+	 * input buffer
+	 */
 	private static final String READ_BUFFER_OPTION = OPTION_BASE + ".readbuffer";
 	private static final int READ_BUFFER_DEFAULT = 4 * 1024; // 4 kiB
 
@@ -246,7 +250,7 @@ public class Main {
 		try (final FileSystem fileSystem = FileSystem.newInstance(new URI(file), CONF)) {
 			fileSystem.setVerifyChecksum(VERIFY_CHECKSUM);
 
-			try (final FSDataInputStream in = fileSystem.open(new Path(file), READ_BUF)) {
+			try (final FSDataInputStream in = fileSystem.open(new Path(file))) {
 				in.seek(block.offset);
 
 				final List<Block> origBlockList = Collections.singletonList(block);
