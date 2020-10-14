@@ -15,12 +15,12 @@
  */
 package name.thomaswerthmann.java.hdfsdownloader;
 
+import java.io.FileDescriptor;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.channels.FileChannel;
 import java.util.EnumSet;
 
-import com.google.protobuf.Descriptors.FileDescriptor;
 import com.sun.jna.Native;
 import com.sun.jna.Platform;
 
