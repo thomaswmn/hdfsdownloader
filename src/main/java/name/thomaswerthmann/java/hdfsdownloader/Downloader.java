@@ -54,6 +54,9 @@ public class Downloader {
 	private static final String UNMAP_OPTION = OPTION_BASE + ".unmap";
 	private static final boolean UNMAP_DEFAULT = false;
 
+	private static final String NEW_FILESYSTEM_INSTANCE_OPTION = OPTION_BASE + ".filesystem.new";
+	private static final boolean NEW_FILESYSTEM_INSTANCE_DEFAULT = false;
+
 	final static long MAX_MMAP_SIZE = 1024 * 1024 * 1024; // 1 GiB, only applied in case buffer > Integer.MAX_SIZE
 
 	private final ThreadLocal<byte[]> bufferPool;
@@ -62,8 +65,8 @@ public class Downloader {
 	final long maxBlockSize;
 
 	final boolean doUnmap;
-
 	final boolean verifyChecksum;
+	final boolean recreateFileSytemInstances;
 	final int numThreads;
 	final Configuration conf;
 
@@ -74,6 +77,7 @@ public class Downloader {
 		bufferPool = ThreadLocal.withInitial(() -> new byte[conf.getInt(READ_BUFFER_OPTION, READ_BUFFER_DEFAULT)]);
 		verifyChecksum = conf.getBoolean(VERIFY_CHECKSUM_OPTION, VERIFY_CHECKSUM_DEFAULT);
 		doUnmap = conf.getBoolean(UNMAP_OPTION, UNMAP_DEFAULT);
+		recreateFileSytemInstances = conf.getBoolean(NEW_FILESYSTEM_INSTANCE_OPTION, NEW_FILESYSTEM_INSTANCE_DEFAULT);
 	}
 
 	public int getNumThreads() {
@@ -226,33 +230,40 @@ public class Downloader {
 		};
 	}
 
-	private void copyToLocal(FileSystem fileSystemUnused, String file, Block block, FileChannel localFile)
+	private void copyToLocal(FileSystem fileSystemExisting, String file, Block block, FileChannel localFile)
 			throws IOException, URISyntaxException {
-		try (final FileSystem fileSystem = FileSystem.newInstance(new URI(file), conf)) {
+
+		final FileSystem fileSystem;
+		if (recreateFileSytemInstances) {
+			fileSystem = FileSystem.newInstance(new URI(file), conf);
 			fileSystem.setVerifyChecksum(verifyChecksum);
+		} else
+			fileSystem = fileSystemExisting;
 
-			try (final FSDataInputStream in = fileSystem.open(new Path(file))) {
-				in.seek(block.offset);
+		try (final FSDataInputStream in = fileSystem.open(new Path(file))) {
+			in.seek(block.offset);
 
-				final List<Block> origBlockList = Collections.singletonList(block);
-				final List<Block> blockList = block.length > Integer.MAX_VALUE
-						? splitBlocks(origBlockList, MAX_MMAP_SIZE, block.length)
-						: origBlockList;
-				final boolean useByteBufferCopy = in.hasCapability(StreamCapabilities.READBYTEBUFFER);
+			final List<Block> origBlockList = Collections.singletonList(block);
+			final List<Block> blockList = block.length > Integer.MAX_VALUE
+					? splitBlocks(origBlockList, MAX_MMAP_SIZE, block.length)
+					: origBlockList;
+			final boolean useByteBufferCopy = in.hasCapability(StreamCapabilities.READBYTEBUFFER);
 
-				for (Block mmBlock : blockList) {
-					final MappedByteBuffer localBuf = localFile.map(MapMode.READ_WRITE, mmBlock.offset, mmBlock.length);
+			for (Block mmBlock : blockList) {
+				final MappedByteBuffer localBuf = localFile.map(MapMode.READ_WRITE, mmBlock.offset, mmBlock.length);
 
-					if (useByteBufferCopy)
-						copyBlockByteBuffer(in, localBuf, mmBlock.length);
-					else
-						copyBlockBytearray(in, localBuf, mmBlock.length);
+				if (useByteBufferCopy)
+					copyBlockByteBuffer(in, localBuf, mmBlock.length);
+				else
+					copyBlockBytearray(in, localBuf, mmBlock.length);
 
-					if (doUnmap)
-						doUnmap(localBuf);
-				}
+				if (doUnmap)
+					doUnmap(localBuf);
 			}
 		}
+
+		if (recreateFileSytemInstances)
+			fileSystem.close();
 	}
 
 	private static void doUnmap(MappedByteBuffer localBuf) {
