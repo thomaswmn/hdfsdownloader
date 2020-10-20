@@ -24,7 +24,7 @@ import java.io.RandomAccessFile;
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.nio.MappedByteBuffer;
+import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileChannel.MapMode;
 import java.util.Arrays;
@@ -74,6 +74,9 @@ public class Downloader {
 	private static final String FALLOCATE_OPTION = OPTION_BASE + ".fallocate.mode";
 	private static final int FALLOCATE_DEFAULT = -1; // do not call fallocate by default
 
+	private static final String DUMMY_OPTION = OPTION_BASE + ".dummy";
+	private static final boolean DUMMY_DEFAULT = false;
+
 	final static long MAX_MMAP_SIZE = 1024 * 1024 * 1024; // 1 GiB, only applied in case buffer > Integer.MAX_SIZE
 
 	private final ThreadLocal<byte[]> bufferPool;
@@ -86,6 +89,7 @@ public class Downloader {
 	final boolean recreateFileSytemInstances;
 	final int numThreads;
 	final int fallocateMode;
+	final boolean dummyDownload;
 	final Configuration conf;
 
 	public Downloader(Configuration conf) {
@@ -97,6 +101,7 @@ public class Downloader {
 		doUnmap = conf.getBoolean(UNMAP_OPTION, UNMAP_DEFAULT);
 		recreateFileSytemInstances = conf.getBoolean(NEW_FILESYSTEM_INSTANCE_OPTION, NEW_FILESYSTEM_INSTANCE_DEFAULT);
 		fallocateMode = conf.getInt(FALLOCATE_OPTION, FALLOCATE_DEFAULT);
+		dummyDownload = conf.getBoolean(DUMMY_OPTION, DUMMY_DEFAULT);
 	}
 
 	public int getNumThreads() {
@@ -222,7 +227,8 @@ public class Downloader {
 			final boolean useByteBufferCopy = in.hasCapability(StreamCapabilities.READBYTEBUFFER);
 
 			for (Block mmBlock : blockList) {
-				final MappedByteBuffer localBuf = localFile.map(MapMode.READ_WRITE, mmBlock.offset, mmBlock.length);
+				final ByteBuffer localBuf = dummyDownload ? DummyBufferCache.get((int) mmBlock.length)
+						: localFile.map(MapMode.READ_WRITE, mmBlock.offset, mmBlock.length);
 
 				if (useByteBufferCopy)
 					copyBlockByteBuffer(in, localBuf, mmBlock.length);
@@ -238,7 +244,7 @@ public class Downloader {
 			fileSystem.close();
 	}
 
-	private static void doUnmap(MappedByteBuffer localBuf) {
+	private static void doUnmap(ByteBuffer localBuf) {
 		try { // try to clean the buffer to unmap the memory
 			Method cleaner = localBuf.getClass().getMethod("cleaner");
 			cleaner.setAccessible(true);
@@ -257,9 +263,10 @@ public class Downloader {
 	 * @param numBytes number of bytes to copy
 	 * @throws IOException
 	 */
-	private void copyBlockBytearray(FSDataInputStream in, MappedByteBuffer localBuf, long numBytes) throws IOException {
+	private void copyBlockBytearray(FSDataInputStream in, ByteBuffer localBuf, long numBytes) throws IOException {
 		final byte[] buf = bufferPool.get();
 
+		assert localBuf.remaining() == numBytes;
 		long remaining = numBytes;
 		while (remaining > 0) {
 			final int bytes = in.read(buf);
@@ -272,8 +279,7 @@ public class Downloader {
 		}
 	}
 
-	private void copyBlockByteBuffer(FSDataInputStream in, MappedByteBuffer localBuf, long numBytes)
-			throws IOException {
+	private void copyBlockByteBuffer(FSDataInputStream in, ByteBuffer localBuf, long numBytes) throws IOException {
 		while (localBuf.hasRemaining()) {
 			final int bytes = in.read(localBuf);
 			assert bytes > 0; // should not be 0 and not EOF
