@@ -77,6 +77,13 @@ public class Downloader {
 	private static final String DUMMY_OPTION = OPTION_BASE + ".dummy";
 	private static final boolean DUMMY_DEFAULT = false;
 
+	private static final String WRITE_MODE_OPTION = OPTION_BASE + ".writemode";
+	private static final WriteMode WRITE_MODE_DEFAULT = WriteMode.MMAP;
+
+	enum WriteMode {
+		MMAP, CHANNEL
+	};
+
 	final static long MAX_MMAP_SIZE = 1024 * 1024 * 1024; // 1 GiB, only applied in case buffer > Integer.MAX_SIZE
 
 	private final ThreadLocal<byte[]> bufferPool;
@@ -92,17 +99,21 @@ public class Downloader {
 	final boolean dummyDownload;
 	final Configuration conf;
 	long fallocateDurationMillis = -1;
+	final WriteMode writeMode;
+	final int readBufferSize;
 
 	public Downloader(Configuration conf) {
 		this.conf = conf;
 		numThreads = conf.getInt(NUM_THREAD_OPTION, NUM_THREAD_DEFAULT);
 		maxBlockSize = conf.getLong(MAX_BLOCK_SIZE_OPTION, MAX_BLOCK_SIZE_DEFAULT);
-		bufferPool = ThreadLocal.withInitial(() -> new byte[conf.getInt(READ_BUFFER_OPTION, READ_BUFFER_DEFAULT)]);
+		readBufferSize = conf.getInt(READ_BUFFER_OPTION, READ_BUFFER_DEFAULT);
+		bufferPool = ThreadLocal.withInitial(() -> new byte[readBufferSize]);
 		verifyChecksum = conf.getBoolean(VERIFY_CHECKSUM_OPTION, VERIFY_CHECKSUM_DEFAULT);
 		doUnmap = conf.getBoolean(UNMAP_OPTION, UNMAP_DEFAULT);
 		recreateFileSytemInstances = conf.getBoolean(NEW_FILESYSTEM_INSTANCE_OPTION, NEW_FILESYSTEM_INSTANCE_DEFAULT);
 		fallocateMode = conf.getInt(FALLOCATE_OPTION, FALLOCATE_DEFAULT);
 		dummyDownload = conf.getBoolean(DUMMY_OPTION, DUMMY_DEFAULT);
+		writeMode = conf.getEnum(WRITE_MODE_OPTION, WRITE_MODE_DEFAULT);
 	}
 
 	public int getNumThreads() {
@@ -234,31 +245,93 @@ public class Downloader {
 		try (final FSDataInputStream in = fileSystem.open(new Path(file))) {
 			in.seek(block.offset);
 
-			// create a list of blocks - either the block itself, or split into sections
-			// suitable for mmapping
-			final List<Block> origBlockList = Collections.singletonList(block);
-			final List<Block> blockList = block.length > Integer.MAX_VALUE
-					? BlockUtils.splitBlocks(origBlockList, MAX_MMAP_SIZE, block.length)
-					: origBlockList;
-			final boolean useByteBufferCopy = in.hasCapability(StreamCapabilities.READBYTEBUFFER);
+			switch (writeMode) {
+			case MMAP:
+				copyBlockMmap(in, block, localFile);
+				break;
+			case CHANNEL:
+				copyBlockChannel(in, block, localFile);
 
-			for (Block mmBlock : blockList) {
-				// mmapped destination file
-				final ByteBuffer localBuf = dummyDownload ? DummyBufferCache.get((int) mmBlock.length)
-						: localFile.map(MapMode.READ_WRITE, mmBlock.offset, mmBlock.length);
-
-				if (useByteBufferCopy)
-					copyBlockByteBuffer(in, localBuf, mmBlock.length);
-				else
-					copyBlockBytearray(in, localBuf, mmBlock.length);
-
-				if (doUnmap)
-					doUnmap(localBuf);
+				break;
+			default:
+				throw new UnsupportedOperationException();
 			}
+
 		}
 
 		if (recreateFileSytemInstances)
 			fileSystem.close();
+	}
+
+	/**
+	 * @param in        input stream, seeked to correct position to start
+	 * @param block     definition of the block to copy
+	 * @param localFile output
+	 * @throws IOException
+	 */
+	private void copyBlockMmap(FSDataInputStream in, Block block, FileChannel localFile) throws IOException {
+		// create a list of blocks - either the block itself, or split into sections
+		// suitable for mmapping
+		final List<Block> origBlockList = Collections.singletonList(block);
+		final List<Block> blockList = block.length > Integer.MAX_VALUE
+				? BlockUtils.splitBlocks(origBlockList, MAX_MMAP_SIZE, block.length)
+				: origBlockList;
+
+		for (Block mmBlock : blockList) {
+			// mmapped destination file
+			final ByteBuffer localBuf = dummyDownload ? DummyBufferCache.get((int) mmBlock.length)
+					: localFile.map(MapMode.READ_WRITE, mmBlock.offset, mmBlock.length);
+
+			final boolean useByteBufferCopy = in.hasCapability(StreamCapabilities.READBYTEBUFFER);
+			if (useByteBufferCopy)
+				copyBlockByteBuffer(in, localBuf, mmBlock.length);
+			else
+				copyBlockBytearray(in, localBuf, mmBlock.length);
+
+			if (doUnmap)
+				doUnmap(localBuf);
+		}
+	}
+
+	/**
+	 * @param in        input stream, seeked to correct position to start
+	 * @param block     definition of the block to copy
+	 * @param localFile output
+	 * @throws IOException
+	 */
+	private void copyBlockChannel(FSDataInputStream in, Block block, FileChannel localFile) throws IOException {
+		final ByteBuffer buf = ByteBuffer.allocate(readBufferSize);
+
+		final boolean useByteBufferRead = in.hasCapability(StreamCapabilities.READBYTEBUFFER);
+
+		long remaining = block.length;
+		long outPosition = block.offset;
+		while (remaining > 0) {
+			buf.clear();
+
+			if (remaining < buf.remaining())
+				buf.limit((int) remaining);
+			assert remaining >= buf.remaining();
+
+			final int bytes;
+			if (useByteBufferRead)
+				bytes = in.read(buf);
+			else { // fallback mode
+				bytes = in.read(buf.array());
+				buf.position(bytes);
+			}
+			assert bytes == buf.position();
+			assert bytes > 0; // should not be 0 and not EOF
+			assert bytes <= remaining;
+
+			remaining -= bytes;
+			assert remaining >= 0;
+
+			buf.flip();
+			while (buf.remaining() > 0)
+				localFile.write(buf, outPosition + buf.position());
+			outPosition += bytes;
+		}
 	}
 
 	/**
