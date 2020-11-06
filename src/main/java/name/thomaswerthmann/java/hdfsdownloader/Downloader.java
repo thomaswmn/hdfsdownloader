@@ -91,6 +91,7 @@ public class Downloader {
 	final int fallocateMode;
 	final boolean dummyDownload;
 	final Configuration conf;
+	long fallocateDurationMillis = -1;
 
 	public Downloader(Configuration conf) {
 		this.conf = conf;
@@ -108,6 +109,10 @@ public class Downloader {
 		return numThreads;
 	}
 
+	public long getFallocateDurationMillis() {
+		return fallocateDurationMillis;
+	}
+
 	public void copyBlockwise(String file, String outFile)
 			throws IOException, InterruptedException, URISyntaxException {
 		try (final FileSystem fileSystem = FileSystem.get(new URI(file), conf)) {
@@ -118,9 +123,13 @@ public class Downloader {
 			try (RandomAccessFile raFile = new RandomAccessFile(outFile, "rw")) {
 				try (final FileChannel localFile = raFile.getChannel()) {
 					// optionally call fallocate()
-					if (fallocateMode >= 0)
+					if (fallocateMode >= 0) {
+						final long startFallocate = System.currentTimeMillis();
 						FallocateHelper.fallocate(localFile, 0, fileSystem.getFileStatus(new Path(file)).getLen(),
 								fallocateMode);
+						final long endFallocate = System.currentTimeMillis();
+						fallocateDurationMillis = endFallocate - startFallocate;
+					}
 
 					if (numThreads >= 1) {
 						final ExecutorService threadPool = Executors.newFixedThreadPool(numThreads);

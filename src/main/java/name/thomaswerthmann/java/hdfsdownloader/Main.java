@@ -39,16 +39,20 @@ public class Main {
 		d.copyBlockwise(file, outFile);
 		final long timeEnd = System.currentTimeMillis();
 		try (final FileSystem fileSystem = FileSystem.get(new URI(file), conf)) {
-			printDurationAndThroughput(timeStart, timeEnd, getFileSize(fileSystem, file), d.getNumThreads());
+			printDurationAndThroughput(timeStart, timeEnd, getFileSize(fileSystem, file), d.getNumThreads(),
+					d.getFallocateDurationMillis());
 		}
 	}
 
-	private static void printDurationAndThroughput(long timeStart, long timeEnd, long fileSize, int numThreads) {
+	private static void printDurationAndThroughput(long timeStart, long timeEnd, long fileSize, int numThreads,
+			long fallocateDurationMillis) {
 		final double duration = (timeEnd - timeStart) / 1000.0;
 		final double bytesPerSecond = fileSize / duration;
 		final double mebiBytesPerSecond = bytesPerSecond / 1024 / 1024;
-		System.out.println(String.format("transferred %,.1f MiB using %d threads in %,.1f s --> %,.1f MiB/s",
-				fileSize / 1024.0 / 1024.0, numThreads, duration, mebiBytesPerSecond));
+		System.out.println(String.format(
+				"transferred %,.1f MiB using %d threads in %,.1f s --> %,.1f MiB/s (fallocate took %,.1f s)",
+				fileSize / 1024.0 / 1024.0, numThreads, duration, mebiBytesPerSecond,
+				fallocateDurationMillis / 1000.0));
 	}
 
 	private static long getFileSize(FileSystem fileSystem, String file) throws IllegalArgumentException, IOException {
