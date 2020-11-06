@@ -289,6 +289,7 @@ public class Downloader {
 	}
 
 	private void copyBlockByteBuffer(FSDataInputStream in, ByteBuffer localBuf, long numBytes) throws IOException {
+		assert localBuf.remaining() == numBytes;
 		while (localBuf.hasRemaining()) {
 			final int bytes = in.read(localBuf);
 			assert bytes > 0; // should not be 0 and not EOF
