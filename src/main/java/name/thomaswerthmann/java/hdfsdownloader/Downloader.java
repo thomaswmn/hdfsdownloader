@@ -300,9 +300,9 @@ public class Downloader {
 	 * @throws IOException
 	 */
 	private void copyBlockChannel(FSDataInputStream in, Block block, FileChannel localFile) throws IOException {
-		final ByteBuffer buf = ByteBuffer.allocate(readBufferSize);
-
 		final boolean useByteBufferRead = in.hasCapability(StreamCapabilities.READBYTEBUFFER);
+		final ByteBuffer buf = useByteBufferRead ? ByteBuffer.allocateDirect(readBufferSize)
+				: ByteBuffer.allocate(readBufferSize);
 
 		long remaining = block.length;
 		long outPosition = block.offset;
