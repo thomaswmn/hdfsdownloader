@@ -216,6 +216,10 @@ public class Downloader {
 		};
 	}
 
+	/**
+	 * copies a single file system block to the respective position in the local
+	 * file
+	 */
 	private void copyToLocal(FileSystem fileSystemExisting, String file, Block block, FileChannel localFile)
 			throws IOException, URISyntaxException {
 
@@ -226,9 +230,12 @@ public class Downloader {
 		} else
 			fileSystem = fileSystemExisting;
 
+		// TODO could try to avoid re-opening the file for each block
 		try (final FSDataInputStream in = fileSystem.open(new Path(file))) {
 			in.seek(block.offset);
 
+			// create a list of blocks - either the block itself, or split into sections
+			// suitable for mmapping
 			final List<Block> origBlockList = Collections.singletonList(block);
 			final List<Block> blockList = block.length > Integer.MAX_VALUE
 					? BlockUtils.splitBlocks(origBlockList, MAX_MMAP_SIZE, block.length)
@@ -236,6 +243,7 @@ public class Downloader {
 			final boolean useByteBufferCopy = in.hasCapability(StreamCapabilities.READBYTEBUFFER);
 
 			for (Block mmBlock : blockList) {
+				// mmapped destination file
 				final ByteBuffer localBuf = dummyDownload ? DummyBufferCache.get((int) mmBlock.length)
 						: localFile.map(MapMode.READ_WRITE, mmBlock.offset, mmBlock.length);
 
@@ -253,8 +261,13 @@ public class Downloader {
 			fileSystem.close();
 	}
 
+	/**
+	 * Typically memory mapped buffers are kept until the Java object is garbage
+	 * collected. This method tries to trigger the cleaner, to unmap the buffer
+	 * immediately. It seems to work, but it comes with some performance impact.
+	 */
 	private static void doUnmap(ByteBuffer localBuf) {
-		try { // try to clean the buffer to unmap the memory
+		try {
 			Method cleaner = localBuf.getClass().getMethod("cleaner");
 			cleaner.setAccessible(true);
 			Method clean = Class.forName("sun.misc.Cleaner").getMethod("clean");
