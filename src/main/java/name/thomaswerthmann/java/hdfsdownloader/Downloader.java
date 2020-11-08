@@ -339,7 +339,7 @@ public class Downloader {
 	 * collected. This method tries to trigger the cleaner, to unmap the buffer
 	 * immediately. It seems to work, but it comes with some performance impact.
 	 */
-	private static void doUnmap(ByteBuffer localBuf) {
+	public static void doUnmap(ByteBuffer localBuf) {
 		try {
 			Method cleaner = localBuf.getClass().getMethod("cleaner");
 			cleaner.setAccessible(true);
