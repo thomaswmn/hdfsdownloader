@@ -15,9 +15,7 @@
  */
 package name.thomaswerthmann.java.hdfsdownloader;
 
-import java.io.FileDescriptor;
 import java.io.IOException;
-import java.lang.reflect.Field;
 import java.nio.channels.FileChannel;
 import java.util.EnumSet;
 
@@ -50,7 +48,7 @@ public class FallocateHelper {
 	}
 
 	public static void fallocate(FileChannel channel, long offset, long length, int mode) throws IOException {
-		final int fd = getDescriptor(channel);
+		final int fd = FileDescriptorHelper.getDescriptor(channel);
 		final int result = FallocateHelper.fallocate(fd, mode, offset, length);
 		final int errno = result == 0 ? 0 : Native.getLastError();
 		if (errno != 0)
@@ -61,24 +59,6 @@ public class FallocateHelper {
 		return mode.stream().mapToInt(m -> m.flag).sum();
 	}
 
-	/**
-	 * helper method to access the privately declared channel -> fd -> fd via
-	 * reflection
-	 * 
-	 * @param channel
-	 * @return file descriptor ID
-	 */
-	private static int getDescriptor(FileChannel channel) {
-		try {
-			final Field descriptorObjectField = channel.getClass().getDeclaredField("fd");
-			descriptorObjectField.setAccessible(true);
-			final FileDescriptor fd = (FileDescriptor) descriptorObjectField.get(channel);
-			final Field descriptorIntField = fd.getClass().getDeclaredField("fd");
-			descriptorIntField.setAccessible(true);
-			return (int) descriptorIntField.get(fd);
-		} catch (final Exception e) {
-			throw new UnsupportedOperationException("unsupported FileChannel implementation", e);
-		}
-	}
+
 
 }
