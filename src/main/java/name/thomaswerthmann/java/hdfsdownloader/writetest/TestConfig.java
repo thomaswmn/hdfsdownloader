@@ -31,46 +31,39 @@ public class TestConfig {
 	final boolean doDelete;
 	final int numIterations = 10;
 	final int bufSize;
+	final int numThreads;
+	final int fallocateMode;
 
-	public TestConfig(WriteMode mode, boolean doDelete, int bufSize) {
+	public TestConfig(WriteMode mode, boolean doDelete, int bufSize, int numThreads, int fallocateMode) {
 		this.mode = mode;
 		this.numBytes = getLongProp(OPTION_NUM_BYTES, DEFAULT_NUM_BYTES);
 		this.outFile = new File(getStringProp(OPTION_FILENAME, DEFAULT_FILENAME));
 		this.doDelete = doDelete;
 		this.bufSize = bufSize;
+		this.numThreads = numThreads;
+		this.fallocateMode = fallocateMode;
 	}
 
 	@Override
 	public String toString() {
-		return "size: " + numBytes + " mode: " + mode.toString() + " delete: " + doDelete + " buffer: " + bufSize;
+		return "size: " + numBytes + " mode: " + mode.toString() + " delete: " + doDelete + " buffer: " + bufSize
+				+ (numThreads > 0 ? " (" + numThreads + " threads)" : "")
+				+ (fallocateMode > -1 ? " fallocate=" + fallocateMode : "");
 	}
 
 	public static List<TestConfig> all() {
 		return Arrays.asList(new TestConfig[] { //
-				new TestConfig(WriteMode.CHANNEL, true, 128 * 1024), //
-				new TestConfig(WriteMode.MMAP, true, 128 * 1024), //
-				new TestConfig(WriteMode.CHANNEL, false, 4 * 1024), //
-				new TestConfig(WriteMode.CHANNEL, false, 8 * 1024), //
-				new TestConfig(WriteMode.CHANNEL, false, 16 * 1024), //
-				new TestConfig(WriteMode.CHANNEL, false, 32 * 1024), //
-				new TestConfig(WriteMode.CHANNEL, false, 64 * 1024), //
-				new TestConfig(WriteMode.CHANNEL, false, 128 * 1024), //
-				new TestConfig(WriteMode.CHANNEL, false, 256 * 1024), //
-				new TestConfig(WriteMode.CHANNEL, false, 512 * 1024), //
-				new TestConfig(WriteMode.CHANNEL, false, 1024 * 1024), //
-				new TestConfig(WriteMode.CHANNEL, false, 2 * 1024 * 1024), //
-				new TestConfig(WriteMode.CHANNEL, false, 4 * 1024 * 1024), //
-				new TestConfig(WriteMode.MMAP, false, 4 * 1024), //
-				new TestConfig(WriteMode.MMAP, false, 8 * 1024), //
-				new TestConfig(WriteMode.MMAP, false, 16 * 1024), //
-				new TestConfig(WriteMode.MMAP, false, 32 * 1024), //
-				new TestConfig(WriteMode.MMAP, false, 64 * 1024), //
-				new TestConfig(WriteMode.MMAP, false, 128 * 1024), //
-				new TestConfig(WriteMode.MMAP, false, 256 * 1024), //
-				new TestConfig(WriteMode.MMAP, false, 512 * 1024), //
-				new TestConfig(WriteMode.MMAP, false, 1024 * 1024), //
-				new TestConfig(WriteMode.MMAP, false, 2 * 1024 * 1024), //
-				new TestConfig(WriteMode.MMAP, false, 4 * 1024 * 1024), //
+				new TestConfig(WriteMode.CHANNEL, true, 128 * 1024, 0, -1), //
+				new TestConfig(WriteMode.CHANNEL, true, 128 * 1024, 0, 0), //
+				new TestConfig(WriteMode.CHANNEL, true, 128 * 1024, 0, 1), //
+				new TestConfig(WriteMode.MMAP, true, 128 * 1024, 0, -1), //
+				new TestConfig(WriteMode.MMAP, true, 128 * 1024, 0, 0), //
+				new TestConfig(WriteMode.MMAP, true, 128 * 1024, 0, 1), //
+				new TestConfig(WriteMode.CHANNEL, false, 128 * 1024, 0, -1), //
+				new TestConfig(WriteMode.CHANNEL, false, 128 * 1024, 1, -1), //
+				new TestConfig(WriteMode.CHANNEL, false, 128 * 1024, 2, -1), //
+				new TestConfig(WriteMode.CHANNEL, false, 128 * 1024, 4, -1), //
+
 		});
 	}
 
