@@ -18,12 +18,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import org.apache.kerby.xdr.type.XdrUnsignedInteger;
-
 import name.thomaswerthmann.java.hdfsdownloader.FallocateHelper;
 import net.smacke.jaydio.DirectIoLib;
-import net.smacke.jaydio.DirectRandomAccessFile;
-import net.smacke.jaydio.align.DirectIoByteChannelAligner;
 import net.smacke.jaydio.buffer.AlignedDirectByteBuffer;
 import net.smacke.jaydio.channel.BufferedChannel;
 import net.smacke.jaydio.channel.DirectIoByteChannel;
