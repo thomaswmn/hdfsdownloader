@@ -3,6 +3,8 @@ package name.thomaswerthmann.java.hdfsdownloader.writetest;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
+import java.nio.channels.AsynchronousFileChannel;
+import java.nio.channels.CompletionHandler;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileChannel.MapMode;
 import java.nio.file.StandardOpenOption;
@@ -12,10 +14,19 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import org.apache.kerby.xdr.type.XdrUnsignedInteger;
+
 import name.thomaswerthmann.java.hdfsdownloader.FallocateHelper;
+import net.smacke.jaydio.DirectIoLib;
+import net.smacke.jaydio.DirectRandomAccessFile;
+import net.smacke.jaydio.align.DirectIoByteChannelAligner;
+import net.smacke.jaydio.buffer.AlignedDirectByteBuffer;
+import net.smacke.jaydio.channel.BufferedChannel;
+import net.smacke.jaydio.channel.DirectIoByteChannel;
 
 public class WriteTest {
 
@@ -61,6 +72,12 @@ public class WriteTest {
 				runSingleMTChannel();
 			else
 				runSingleChannel();
+			break;
+		case ASYNC:
+			runSingleAsync();
+			break;
+		case DIRECT:
+			runSingleDirectIO();
 			break;
 		default:
 			throw new UnsupportedOperationException();
@@ -177,4 +194,87 @@ public class WriteTest {
 		}
 	}
 
+	/**
+	 * Using the Java {@link AsynchronousFileChannel} API. Note that on Linux, this
+	 * uses a thread pool and normal blocking IO.
+	 * 
+	 * @throws IOException
+	 */
+	public void runSingleAsync() throws IOException {
+		try (AsynchronousFileChannel ch = AsynchronousFileChannel.open(conf.outFile.toPath(), StandardOpenOption.WRITE,
+				StandardOpenOption.CREATE)) {
+			assert conf.fallocateMode == -1 : "ASYNC + fallocate not supported";
+
+			final ByteBuffer buf = ByteBuffer.allocateDirect(conf.bufSize);
+			long remaining = conf.numBytes;
+			long offset = 0;
+
+			AtomicLong inflight = new AtomicLong(0);
+
+			final CompletionHandler<Integer, Integer> handler = new CompletionHandler<Integer, Integer>() {
+				@Override
+				public void completed(Integer result, Integer attachment) {
+					inflight.getAndDecrement();
+					if (result.intValue() != attachment.intValue())
+						throw new RuntimeException("short write");
+				}
+
+				@Override
+				public void failed(Throwable exc, Integer attachment) {
+					inflight.getAndDecrement();
+					throw new RuntimeException("write failed", exc);
+				}
+			};
+
+			while (remaining > 0) {
+				final long size = Math.min(remaining, buf.capacity());
+				submitAsyncWrite(ch, buf.duplicate(), size, offset, handler);
+				inflight.getAndIncrement();
+
+				remaining -= size;
+				offset += size;
+				assert remaining >= 0;
+			}
+
+			while (inflight.get() > 0)
+				try {
+					Thread.sleep(10);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+		}
+	}
+
+	private void submitAsyncWrite(AsynchronousFileChannel ch, ByteBuffer buf, long numBytes, long offset,
+			CompletionHandler<Integer, Integer> handler) {
+
+		buf.clear();
+		if (numBytes < buf.remaining())
+			buf.limit((int) numBytes);
+		assert numBytes == buf.remaining();
+
+		ch.write(buf, offset, buf.remaining(), handler);
+	}
+
+	public void runSingleDirectIO() throws IOException {
+		try (final BufferedChannel<AlignedDirectByteBuffer> ch = DirectIoByteChannel.getChannel(conf.outFile, false)) {
+
+			final AlignedDirectByteBuffer buf = AlignedDirectByteBuffer
+					.allocate(DirectIoLib.getLibForPath(conf.outFile.getAbsolutePath()), conf.bufSize);
+
+			long remaining = conf.numBytes;
+			long offset = 0;
+			while (remaining > 0) {
+				buf.clear();
+				if (remaining < buf.remaining())
+					buf.limit((int) remaining);
+				assert remaining >= buf.remaining();
+
+				final int written = ch.write(buf, offset);
+				remaining -= written;
+				offset += written;
+				assert remaining >= 0;
+			}
+		}
+	}
 }

@@ -22,7 +22,7 @@ public class TestConfig {
 	}
 
 	enum WriteMode {
-		MMAP, CHANNEL
+		MMAP, CHANNEL, ASYNC, DIRECT
 	}
 
 	final TestConfig.WriteMode mode;
@@ -53,6 +53,7 @@ public class TestConfig {
 
 	public static List<TestConfig> all() {
 		return Arrays.asList(new TestConfig[] { //
+				new TestConfig(WriteMode.DIRECT, true, 128 * 1024, 0, -1), //
 				new TestConfig(WriteMode.CHANNEL, true, 128 * 1024, 0, -1), //
 				new TestConfig(WriteMode.CHANNEL, true, 128 * 1024, 0, 0), //
 				new TestConfig(WriteMode.CHANNEL, true, 128 * 1024, 0, 1), //

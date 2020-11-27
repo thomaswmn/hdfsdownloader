@@ -38,6 +38,15 @@
 			<artifactId>jna</artifactId>
 			<version>5.6.0</version>
 		</dependency>
+		<!--  jaydio provides a DIRECTIO implementation -->
+		<dependency>
+			<groupId>net.smacke</groupId>
+			<artifactId>jaydio</artifactId>
+			<version>0.1</version>
+		</dependency>
+
+	</dependencies>
+
 	<build>
 		<plugins>
 			<plugin>
